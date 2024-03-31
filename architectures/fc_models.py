@@ -149,30 +149,27 @@ class ResidualAutoEncoder(tf.keras.Model):
         self.encoders = [Encoder(self.binary_size, self.patch_size) for _ in range(self.steps)]
         self.decoders = [Decoder(self.binary_size, self.patch_size) for _ in range(self.steps)]
 
-    # def train_step(self, data):
-    #     x, y = data
-    #     losses = []
-    #     with tf.GradientTape() as tape:
-    #         for i in range(self.steps):
-    #             x = self((x, i), training=True)
+    def train_step(self, data):
+        x, y = data
+        losses = []
+        with tf.GradientTape() as tape:
+            y_pred = self(x, training=True)
+            loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
 
-    #             loss = self.compiled_loss(y, x)
-    #             losses.append(loss)
+            loss = tf.reduce_sum(losses)
 
-    #         loss = tf.reduce_sum(losses)
+        # compute gradients
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
-    #     # compute gradients
-    #     trainable_vars = self.trainable_variables
-    #     gradients = tape.gradient(loss, trainable_vars)
-    #     self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-    #     for metric in self.metrics:
-    #         if metric.name == 'loss':
-    #             metric.update_state(loss)
-    #         else:
-    #             metric.update_state(y, x)
+        for metric in self.metrics:
+            if metric.name == 'loss':
+                metric.update_state(loss)
+            else:
+                metric.update_state(y, y_pred)
         
-    #     return {m.name: m.result() for m in self.metrics}
+        return {m.name: m.result() for m in self.metrics}
 
     def call(self, inputs):
         x = inputs
@@ -185,8 +182,3 @@ class ResidualAutoEncoder(tf.keras.Model):
             self.add_loss(tf.reduce_sum(tf.square(x)))
         
         return x
-
-
-
-
-            
