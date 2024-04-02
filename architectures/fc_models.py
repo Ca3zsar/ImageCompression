@@ -1,6 +1,8 @@
 import tensorflow as tf
-from keras.layers import Add
-from keras.layers import Activation
+import numpy as np
+import keras
+
+from keras.losses import MeanSquaredError
 
 @tf.custom_gradient
 def binary_out(inputs):
@@ -44,21 +46,23 @@ class Encoder(tf.keras.Model):
         self.binary_size = binary_size
         self.patch_size = patch_size
 
-        self.dense_1 = tf.keras.layers.Dense(512, activation='tanh', trainable=True)
-        self.dense_2 = tf.keras.layers.Dense(512, activation='tanh', trainable=True)
-        self.dense_3 = tf.keras.layers.Dense(512, activation='tanh', trainable=True)
-        self.dense_4 = tf.keras.layers.Dense(binary_size, activation=binary_out, use_bias=False, trainable=True)
+        self.custom_layers = []
+        for i in range(3):
+            self.custom_layers.append(tf.keras.layers.Dense(512, activation='tanh', trainable=True))
+        self.custom_layers.append(tf.keras.layers.Dense(binary_size, activation=binary_out, use_bias=False, trainable=True))
 
     def call(self, inputs, training=True):
         # reshape inputs to 1D
         inputs = tf.reshape(inputs, [-1, self.patch_size*self.patch_size*3])
         bits = inputs
-        bits = self.dense_1(bits)
-        bits = self.dense_2(bits)
-        bits = self.dense_3(bits)
-        bits = self.dense_4(bits)
+        for layer in self.custom_layers:
+            bits = layer(bits)
 
         return bits
+    
+    def build_graph(self):
+        x = tf.keras.layers.Input(shape=(self.patch_size * self.patch_size * 3, ))
+        return tf.keras.models.Model(inputs=[x], outputs=self.call(x))
     
 
 class Decoder(tf.keras.Model):
@@ -67,19 +71,23 @@ class Decoder(tf.keras.Model):
         self.binary_size = binary_size
         self.patch_size = patch_size
     
-        self.custom_layers = [
-            tf.keras.layers.Dense(512, activation='tanh'),
-            tf.keras.layers.Dense(512, activation='tanh'),
-            tf.keras.layers.Dense(512, activation='tanh'),
-            tf.keras.layers.Dense(patch_size*patch_size*3, activation='tanh')
-        ]
+        self.custom_layers = []
+        for i in range(3):
+            self.custom_layers.append(tf.keras.layers.Dense(512, activation='tanh', trainable=True))
+
+        self.custom_layers.append(tf.keras.layers.Dense(patch_size*patch_size*3, activation='tanh'))
+        
 
     def call(self, inputs):
         x = inputs
         for layer in self.custom_layers:
             x = layer(x)
-        x = tf.reshape(x, [-1, self.patch_size, self.patch_size, 3])
+        # x = tf.reshape(x, [-1, self.patch_size, self.patch_size, 3])
         return x
+    
+    def build_graph(self):
+        x = tf.keras.layers.Input(shape=(self.binary_size))
+        return tf.keras.models.Model(inputs=[x], outputs=self.call(x))
     
 
 class AutoEncoder(tf.keras.Model):
@@ -99,46 +107,6 @@ class AutoEncoder(tf.keras.Model):
         return out
 
 
-class ResidualAutoEncoderShareWeight(tf.keras.Model):
-    def __init__(self, binary_size, patch_size, steps):
-        super(ResidualAutoEncoderShareWeight, self).__init__()
-        self.binary_size = binary_size
-        self.patch_size = patch_size
-        self.steps = steps
-
-        self.encoder = Encoder(self.binary_size, self.patch_size)
-        self.decoder = Decoder(self.binary_size, self.patch_size)
-
-    def train_step(self, data):
-        x, y = data
-        with tf.GradientTape() as tape:
-            for i in range(self.steps):
-                # append i to the input
-                x = self((x, i), training=True)
-            
-            loss = self.compiled_loss(y, x)
-
-        # compute gradients
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
-
-        for metric in self.metrics:
-            if metric.name == 'loss':
-                metric.update_state(loss)
-            else:
-                metric.update_state(y, x)
-        
-        return {m.name: m.result() for m in self.metrics}
-
-    def call(self, inputs):
-        out_bits = self.encoder(inputs)
-        out_patch = self.decoder(out_bits)
-                                 
-        out_patch = inputs - out_patch
-
-        return out_patch
-
 class ResidualAutoEncoder(tf.keras.Model):
     def __init__(self, binary_size, patch_size, steps):
         super(ResidualAutoEncoder, self).__init__()
@@ -151,12 +119,9 @@ class ResidualAutoEncoder(tf.keras.Model):
 
     def train_step(self, data):
         x, y = data
-        losses = []
         with tf.GradientTape() as tape:
             y_pred = self(x, training=True)
             loss = self.compiled_loss(y, y_pred, regularization_losses=self.losses)
-
-            loss = tf.reduce_sum(losses)
 
         # compute gradients
         trainable_vars = self.trainable_variables
@@ -171,14 +136,34 @@ class ResidualAutoEncoder(tf.keras.Model):
         
         return {m.name: m.result() for m in self.metrics}
 
-    def call(self, inputs):
+    def predict_step(self, data):
+        x = data
+        y_pred = self(x, training=False)
+        return y_pred
+
+    def call(self, inputs, training=True):
         x = inputs
+        patch = tf.zeros_like(x)
+        losses = []
 
         for i in range(self.steps):
+            cur_x = x
             bits = self.encoders[i](x)
             x = self.decoders[i](bits)
-            x = inputs - x
 
-            self.add_loss(tf.reduce_sum(tf.square(x)))
+            output_patch = x
+
+            patch = patch + output_patch
+
+            x = cur_x - x
+            if training and i != self.steps-1:
+                losses.append(tf.reduce_mean(tf.square(x)))
         
-        return x
+        loss = tf.reduce_sum(losses)
+        self.add_loss(loss)
+
+        return patch
+    
+    def build_graph(self):
+        x = tf.keras.layers.Input(shape=(self.patch_size * self.patch_size * 3))
+        return tf.keras.models.Model(inputs=[x], outputs=self.call(x))
