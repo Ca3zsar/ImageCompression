@@ -2,7 +2,22 @@
 import os
 # os.environ['PSNR_HVSM_BACKEND'] = 'torch'
 
-from psnr_hvsm import psnr_hvs_hvsm, bt601ycbcr
+from psnr_hvsm import psnr_hvs_hvsm
+import numpy as np
+
+def bt601ycbcr(a):
+    """Convert an RGB image into normalized YCbCr."""
+    # a is of shape (N, height, width, 3)
+    # r, g, b are of shape (N, height, width)
+    r = a[..., 0].astype(np.float64)
+    g = a[..., 1].astype(np.float64)
+    b = a[..., 2].astype(np.float64)
+    
+    y = np.round(16 + 65.481 * r / 255 + 128.553 * g / 255 + 24.966 * b / 255) / 255
+    cb = np.round(128 - 37.797 * r / 255 - 74.203 * g / 255 + 112.0 * b / 255) / 255
+    cr = np.round(128 + 112.0 * r / 255 - 93.786 * g / 255 - 18.214 * b / 255) / 255
+    return y, cb, cr
+
 
 def compute_psnr_hvs(image_1, image_2):
     """Compute PSNR-HVS-M between two images."""
