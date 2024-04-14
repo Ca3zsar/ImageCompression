@@ -21,9 +21,9 @@ class Encoder(tf.keras.models.Model):
         self.hidden_size = 512
 
         self.custom_layers = [
-            layers.Dense(self.patch_size*self.patch_size*3, activation='tanh', trainable=True),
-            layers.LSTMCell(self.hidden_size, trainable=True),
-            layers.LSTMCell(self.hidden_size, trainable=True),
+            layers.Dense(self.hidden_size, activation='tanh', trainable=True),
+            layers.LSTM(self.hidden_size, return_state=True, trainable=True),
+            layers.LSTM(self.hidden_size, return_state=True, trainable=True),
         ]
         self.custom_layers.append(tf.keras.layers.Dense(binary_size, activation=binary_out, use_bias=False, trainable=True))
 
@@ -35,12 +35,12 @@ class Encoder(tf.keras.models.Model):
         return (h_1_0, c_1_0), (h_2_0, c_2_0)
 
     def call(self, inputs, training=True):
-        x, state = inputs
+        x = inputs
         
         x = tf.reshape(x, [-1, self.patch_size*self.patch_size*3])
         x = self.custom_layers[0](x)
-        h_out1, c_out1 = self.custom_layers[1](x, state[0])
-        h_out2, c_out2 = self.custom_layers[2](h_out1, state[1])
+        h_out1, c_out1 = self.custom_layers[1](x)
+        h_out2, c_out2 = self.custom_layers[2](h_out1)
         bits = self.custom_layers[3](h_out2)
         new_state = ((h_out1, c_out1[1]), (h_out2, c_out2[1]))
         return bits, new_state
@@ -48,7 +48,9 @@ class Encoder(tf.keras.models.Model):
 
     def build_graph(self):
         x = tf.keras.layers.Input(shape=(self.patch_size , self.patch_size , 3 ))
-        return tf.keras.models.Model(inputs=[x], outputs=self.call(x))
+        state = self.init_state()
+
+        return tf.keras.models.Model(inputs=[x], outputs=self.call((x, state)))
     
 
 class Decoder(tf.keras.models.Model):
@@ -73,7 +75,7 @@ class Decoder(tf.keras.models.Model):
         c_1_0 = tf.zeros([self.batch_size, self.hidden_size])
         h_2_0 = tf.zeros([self.batch_size, self.hidden_size])
         c_2_0 = tf.zeros([self.batch_size, self.hidden_size])
-        return (h_1_0, c_1_0), (h_2_0, c_2_0)
+        return ((h_1_0, c_1_0), (h_2_0, c_2_0))
 
     def call(self, inputs, training=True):
         x, state = inputs
@@ -86,8 +88,11 @@ class Decoder(tf.keras.models.Model):
         return x, new_state
     
     def build_graph(self):
-        x = tf.keras.layers.Input(shape=(self.patch_size , self.patch_size , 3 ))
-        return tf.keras.models.Model(inputs=[x], outputs=self.call(x))
+        x = tf.keras.layers.Input(shape=(self.binary_size))
+        state = self.init_state()
+
+        return tf.keras.models.Model(inputs=[x], outputs=self.call((x, state)))
+    
     
 
 class LSTM_Autoencoder(tf.keras.models.Model):
@@ -95,6 +100,9 @@ class LSTM_Autoencoder(tf.keras.models.Model):
         super(LSTM_Autoencoder, self).__init__()
 
         self.steps = steps
+        self.batch_size = batch_size
+        self.binary_size = binary_size
+        self.patch_size = patch_size
 
         self.encoder = Encoder(batch_size, binary_size, patch_size)
         self.decoder = Decoder(batch_size, binary_size, patch_size)
@@ -133,5 +141,5 @@ class LSTM_Autoencoder(tf.keras.models.Model):
         return residual
 
     def build_graph(self):
-        x = tf.keras.layers.Input(shape=(self.encoder.patch_size , self.encoder.patch_size , 3 ))
+        x = tf.keras.layers.Input(shape=(self.patch_size , self.patch_size , 3))
         return tf.keras.models.Model(inputs=[x], outputs=self.call(x))

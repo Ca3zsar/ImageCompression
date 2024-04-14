@@ -1,2 +1,7 @@
 *.pyc
 *.h5
+data/stl10/test_X.bin
+data/stl10/test_y.bin
+data/stl10/train_X.bin
+data/stl10/train_y.bin
+data/stl10/unlabeled_X.bin
