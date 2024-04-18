@@ -1,6 +1,4 @@
-__package__ = ''
-
-import architectures
-import metrics
-
-__all__ = ['architectures', 'metrics']
+"""
+This module contains for the moment all the notebooks with the
+experimentation of the different architectures.
+"""

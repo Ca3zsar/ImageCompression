@@ -1,9 +1,5 @@
-# Structural Similarity Index (SSIM) metric
-#
-
-# Path: metrics/ssim.py
-
 import tensorflow as tf
+
 
 def ssim(y_true, y_pred, max_val=1.0):
     y_true = tf.convert_to_tensor(y_true)
