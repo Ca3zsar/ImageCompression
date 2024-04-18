@@ -25,6 +25,6 @@ jobs:
         conda list
     - name: Analysing the code with pylint
       run: |
-        conda init
+        conda init --all
         conda activate disertatie
         pylint $(git ls-files '*.py') --fail-under=8
