@@ -23,8 +23,8 @@ jobs:
     - run: |
         conda info
         conda list
-    - name: Analysing the code with pylint
-      run: |
         conda init --all
-        conda activate disertatie
+    - name: Analysing the code with pylint
+      shell: bash -l {0}
+      run: |
         pylint $(git ls-files '*.py') --fail-under=8
