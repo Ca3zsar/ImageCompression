@@ -14,10 +14,15 @@ jobs:
       uses: actions/setup-python@v3
       with:
         python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+    - uses: conda-incubator/setup-miniconda@v2
+      with:
+        activate-environment: disertatie
+        environment-file: conda.yml
+        python-version: ${{ matrix.python-version }}
+        auto-activate-base: false
+    - run: |
+        conda info
+        conda list
     - name: Analysing the code with pylint
       run: |
         pylint $(git ls-files '*.py') --fail-under=8
