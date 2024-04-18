@@ -237,10 +237,7 @@ dependencies:
       - tensorflow-datasets==4.9.4
       - tensorflow-io-gcs-filesystem==0.36.0
       - tensorflow-metadata==1.14.0
-      - tensorflow-probability==0.20.0
-      - tensorrt==8.6.1.post1
-      - tensorrt-bindings==8.6.1
-      - tensorrt-libs==8.6.1
+      - tensorflow-probability==0.20.
       - terminado==0.18.1
       - tinycss2==1.2.1
       - toml==0.10.2
