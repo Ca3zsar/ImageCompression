@@ -31,4 +31,4 @@ jobs:
     - name: Generate badge
       shell: bash -l {0}
       run: |
-        python3 generate_badge.py .
+        python3 pylintbadge.py .
