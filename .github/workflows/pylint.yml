@@ -21,9 +21,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
         auto-activate-base: false
     - run: |
-        conda update pip
         conda info
         conda list
     - name: Analysing the code with pylint
       run: |
+        conda init
+        conda activate disertatie
         pylint $(git ls-files '*.py') --fail-under=8
