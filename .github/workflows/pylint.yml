@@ -28,7 +28,3 @@ jobs:
       shell: bash -l {0}
       run: |
         pylint $(git ls-files '*.py') --fail-under=8
-    - name: Generate badge
-      shell: bash -l {0}
-      run: |
-        python3 pylintbadge.py .
