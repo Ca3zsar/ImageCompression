@@ -45,6 +45,10 @@ def get_dataset(name, split, args):
         dataset = tfds.load(name, split=split, shuffle_files=True)
         if split.startswith("train"):
             dataset = dataset.repeat()
-        dataset = dataset.filter(lambda x: check_image_size(x[args["field"]], args["patch_size"]))
-        dataset = dataset.map(lambda x: crop_image(x[args["field"]], args["patch_size"]))
+        dataset = dataset.filter(
+            lambda x: check_image_size(x[args["field"]], args["patch_size"])
+        )
+        dataset = dataset.map(
+            lambda x: crop_image(x[args["field"]], args["patch_size"])
+        )
     return dataset

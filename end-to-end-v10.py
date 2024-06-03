@@ -1,7 +1,6 @@
-
-
 import os
 import warnings
+
 warnings.filterwarnings("ignore", category=UserWarning, module="tensorflow")
 
 import numpy as np
@@ -26,25 +25,23 @@ config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 
-tf.autograph.set_verbosity(
-    level=3, alsologtostdout=False
-)
+tf.autograph.set_verbosity(level=3, alsologtostdout=False)
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
 
 args = {
-    "patch_size" : 256,
-    "batch_size" : 8,
-    "num_filters" : 512,
-    "latent_dims" : 64,
-    "lambda_value" : 1,
-    "num_epochs" : 30,
-    "steps_per_epoch" : 1000,
-    "checkpoint_dir" : "models/checkpoints/",
-    "model_dir" : "models/",
-    "model_name" : "end_to_end_v10",
-    "field" : "image"
+    "patch_size": 256,
+    "batch_size": 8,
+    "num_filters": 512,
+    "latent_dims": 64,
+    "lambda_value": 1,
+    "num_epochs": 30,
+    "steps_per_epoch": 1000,
+    "checkpoint_dir": "models/checkpoints/",
+    "model_dir": "models/",
+    "model_name": "end_to_end_v10",
+    "field": "image",
 }
 
 
@@ -55,19 +52,43 @@ class AnalysisTransform(tf.keras.Sequential):
 
     def __init__(self, num_filters, latent_dims):
         super().__init__(name="analysis_transform")
-        self.add(tf.keras.layers.Lambda(lambda x: x / 255.))
-        self.add(tfc.SignalConv2D(
-            num_filters, (9, 9), name='layer0', corr=True, strides_down=4,
-            padding='same_zeros', use_bias=True, activation=tfc.GDN(name='gdn0')
-        ))
-        self.add(tfc.SignalConv2D(
-            num_filters // 2, (5, 5), name='layer1', corr=True, strides_down=2,
-            padding='same_zeros', use_bias=True, activation=tfc.GDN(name='gdn1')
-        ))
-        self.add(tfc.SignalConv2D(
-            latent_dims, (5, 5), name='layer2', corr=True, strides_down=2,
-            padding='same_zeros', use_bias=False, activation=None
-        ))
+        self.add(tf.keras.layers.Lambda(lambda x: x / 255.0))
+        self.add(
+            tfc.SignalConv2D(
+                num_filters,
+                (9, 9),
+                name="layer0",
+                corr=True,
+                strides_down=4,
+                padding="same_zeros",
+                use_bias=True,
+                activation=tfc.GDN(name="gdn0"),
+            )
+        )
+        self.add(
+            tfc.SignalConv2D(
+                num_filters // 2,
+                (5, 5),
+                name="layer1",
+                corr=True,
+                strides_down=2,
+                padding="same_zeros",
+                use_bias=True,
+                activation=tfc.GDN(name="gdn1"),
+            )
+        )
+        self.add(
+            tfc.SignalConv2D(
+                latent_dims,
+                (5, 5),
+                name="layer2",
+                corr=True,
+                strides_down=2,
+                padding="same_zeros",
+                use_bias=False,
+                activation=None,
+            )
+        )
 
 
 class SynthesisTransform(tf.keras.Sequential):
@@ -77,19 +98,43 @@ class SynthesisTransform(tf.keras.Sequential):
 
     def __init__(self, num_filters):
         super().__init__(name="synthesis_transform")
-        self.add(tfc.SignalConv2D(
-            num_filters // 2, (5, 5), name='layer0', corr=False, strides_up=2,
-            padding='same_zeros', use_bias=True, activation=tfc.GDN(name='igdn0', inverse=True)
-        ))
-        self.add(tfc.SignalConv2D(
-            num_filters, (5, 5), name='layer1', corr=False, strides_up=2,
-            padding='same_zeros', use_bias=True, activation=tfc.GDN(name='igdn1', inverse=True)
-        ))
-        self.add(tfc.SignalConv2D(
-            3, (9, 9), name='layer2', corr=False, strides_up=4,
-            padding='same_zeros', use_bias=True, activation=None
-        ))
-        self.add(tf.keras.layers.Lambda(lambda x: x * 255.))
+        self.add(
+            tfc.SignalConv2D(
+                num_filters // 2,
+                (5, 5),
+                name="layer0",
+                corr=False,
+                strides_up=2,
+                padding="same_zeros",
+                use_bias=True,
+                activation=tfc.GDN(name="igdn0", inverse=True),
+            )
+        )
+        self.add(
+            tfc.SignalConv2D(
+                num_filters,
+                (5, 5),
+                name="layer1",
+                corr=False,
+                strides_up=2,
+                padding="same_zeros",
+                use_bias=True,
+                activation=tfc.GDN(name="igdn1", inverse=True),
+            )
+        )
+        self.add(
+            tfc.SignalConv2D(
+                3,
+                (9, 9),
+                name="layer2",
+                corr=False,
+                strides_up=4,
+                padding="same_zeros",
+                use_bias=True,
+                activation=None,
+            )
+        )
+        self.add(tf.keras.layers.Lambda(lambda x: x * 255.0))
 
 
 class EndToEndModel(tf.keras.Model):
@@ -97,20 +142,24 @@ class EndToEndModel(tf.keras.Model):
     End-to-end learned image compression model.
     """
 
-    def __init__(self, lmbda, num_filters, latent_dims, prior_values = None):
+    def __init__(self, lmbda, num_filters, latent_dims, prior_values=None):
         super().__init__()
-        
+
         self.lmbda = lmbda
         self.analysis_transform = AnalysisTransform(num_filters, latent_dims)
         self.synthesis_transform = SynthesisTransform(num_filters)
 
         # prior values is a variable with all the values 0.5
         self.prior = tfc.NoisyDeepFactorized(batch_shape=(latent_dims,))
-        self.entropy_model = tfc.ContinuousBatchedEntropyModel(self.prior, coding_rank=3, compression=True)
+        self.entropy_model = tfc.ContinuousBatchedEntropyModel(
+            self.prior, coding_rank=3, compression=True
+        )
 
     def call(self, x, training):
         """Computes rate and distortion losses"""
-        entropy_model = tfc.ContinuousBatchedEntropyModel(self.prior, coding_rank=3, compression=False)
+        entropy_model = tfc.ContinuousBatchedEntropyModel(
+            self.prior, coding_rank=3, compression=False
+        )
 
         x = tf.cast(x, self.compute_dtype)
         y = self.analysis_transform(x, training=training)
@@ -124,9 +173,9 @@ class EndToEndModel(tf.keras.Model):
 
         # Compute the distortion
         # distortion = tf.reduce_mean(tf.math.squared_difference(x, x_tilde))
-        distortion = tf.compat.v1.losses.absolute_difference(x,
-                                              x_tilde,
-                                              reduction=tf.compat.v1.losses.Reduction.MEAN)
+        distortion = tf.compat.v1.losses.absolute_difference(
+            x, x_tilde, reduction=tf.compat.v1.losses.Reduction.MEAN
+        )
         # distortion = 1 - tf.image.ssim(x, x_tilde, max_val=255)
         distortion = tf.cast(distortion, tf.float32)
 
@@ -134,7 +183,7 @@ class EndToEndModel(tf.keras.Model):
         loss = bpp + self.lmbda * distortion
 
         return loss, bpp, distortion
-    
+
     def train_step(self, x):
         with tf.GradientTape() as tape:
             loss, bpp, distortion = self(x, training=True)
@@ -148,7 +197,7 @@ class EndToEndModel(tf.keras.Model):
         self.distortion.update_state(distortion)
 
         return {m.name: m.result() for m in [self.loss, self.bpp, self.distortion]}
-    
+
     def test_step(self, x):
         loss, bpp, distortion = self(x, training=False)
         self.loss.update_state(loss)
@@ -156,14 +205,10 @@ class EndToEndModel(tf.keras.Model):
         self.distortion.update_state(distortion)
 
         return {m.name: m.result() for m in [self.loss, self.bpp, self.distortion]}
-    
+
     def compile(self, **kwargs):
         super().compile(
-            loss=None,
-            metrics=None,
-            loss_weights=None,
-            weighted_metrics=None,
-            **kwargs
+            loss=None, metrics=None, loss_weights=None, weighted_metrics=None, **kwargs
         )
 
         self.loss = tf.keras.metrics.Mean(name="loss")
@@ -173,32 +218,36 @@ class EndToEndModel(tf.keras.Model):
     def fit(self, *args, **kwargs):
         retval = super().fit(*args, **kwargs)
 
-        self.entropy_model = tfc.ContinuousBatchedEntropyModel(self.prior, coding_rank=3, compression=True)
+        self.entropy_model = tfc.ContinuousBatchedEntropyModel(
+            self.prior, coding_rank=3, compression=True
+        )
         return retval
-    
+
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None, 3], dtype=tf.uint8)])
     def compress(self, x):
         x = tf.expand_dims(x, 0)
         x = tf.cast(x, self.compute_dtype)
 
         y = self.analysis_transform(x, training=False)
-        
+
         x_shape = tf.shape(x)[1:-1]
         y_shape = tf.shape(y)[1:-1]
-        
+
         return self.entropy_model.compress(y), x_shape, y_shape
-    
-    @tf.function(input_signature=[
-        tf.TensorSpec(shape=(1, ), dtype=tf.string),
-        tf.TensorSpec(shape=(2, ), dtype=tf.int32),
-        tf.TensorSpec(shape=(2, ), dtype=tf.int32)
-    ])
+
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(shape=(1,), dtype=tf.string),
+            tf.TensorSpec(shape=(2,), dtype=tf.int32),
+            tf.TensorSpec(shape=(2,), dtype=tf.int32),
+        ]
+    )
     def decompress(self, string, x_shape, y_shape):
-        
+
         y_tilde = self.entropy_model.decompress(string, y_shape)
         x_tilde = self.synthesis_transform(y_tilde, training=False)
 
-        x_tilde = x_tilde[0, :x_shape[0], :x_shape[1], :]
+        x_tilde = x_tilde[0, : x_shape[0], : x_shape[1], :]
 
         return tf.saturate_cast(tf.round(x_tilde), tf.uint8)
 
@@ -218,12 +267,10 @@ def train(model=None):
 
     if model == None:
         model = EndToEndModel(
-                    args["lambda_value"], args["num_filters"], args["latent_dims"]
-                )
+            args["lambda_value"], args["num_filters"], args["latent_dims"]
+        )
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4, clipnorm=0.5)
-    )
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4, clipnorm=0.5))
 
     train_dataset = get_dataset("clic", "train", args)
     validation_dataset = get_dataset("clic", "validation", args)
@@ -231,17 +278,21 @@ def train(model=None):
     train_dataset = train_dataset.batch(args["batch_size"]).prefetch(8)
     validation_dataset = validation_dataset.batch(args["batch_size"]).cache()
     model.fit(
-        train_dataset, 
+        train_dataset,
         epochs=args["num_epochs"],
         steps_per_epoch=args["steps_per_epoch"],
-        validation_data=validation_dataset, 
+        validation_data=validation_dataset,
         validation_freq=1,
         callbacks=[
             tf.keras.callbacks.TerminateOnNaN(),
             tf.keras.callbacks.TensorBoard(
-                log_dir=f'{args["model_dir"]}/{args["model_name"]}/logs', histogram_freq=1, update_freq="epoch"
+                log_dir=f'{args["model_dir"]}/{args["model_name"]}/logs',
+                histogram_freq=1,
+                update_freq="epoch",
             ),
-            tf.keras.callbacks.BackupAndRestore(f'{args["model_dir"]}/{args["model_name"]}'),
+            tf.keras.callbacks.BackupAndRestore(
+                f'{args["model_dir"]}/{args["model_name"]}'
+            ),
             tf.keras.callbacks.ModelCheckpoint(
                 filepath=args["checkpoint_dir"] + args["model_name"] + ".h5",
                 save_best_only=True,
