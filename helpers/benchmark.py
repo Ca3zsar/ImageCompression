@@ -2,6 +2,7 @@ from typing import Callable
 import tensorflow as tf
 import matplotlib.pyplot as plt
 import numpy as np
+import os
 
 from helpers.file_operations import write_image
 
@@ -25,9 +26,6 @@ def reconstruct(
 
     height, width, channels = image.shape
 
-    # transform image to list with a single element
-    # image = tf.expand_dims(image, axis=0)
-    print(image.shape)
     strings, x_shape, y_shape = compress_function(image)
 
     reconstructed_image = decompress_function(strings, x_shape, y_shape)
@@ -50,7 +48,6 @@ def compute_bitrate(image, strings):
     pixels = tf.cast(tf.reduce_prod(tf.shape(image)[-3:-1]), tf.float32)
     bits = len(strings.numpy()[0]) * 8
 
-    print(bits, pixels)
     compression_ratio = tf.cast(bits, tf.float32) / pixels
 
     return compression_ratio
@@ -105,6 +102,9 @@ def compute_benchmark(
     ssims = []
     ms_ssims = []
     rates = []
+    
+    if save:
+        os.makedirs(f"results/{save_path}",exist_ok=True)
 
     for image_path in benchmark_images:
         image = tf.image.decode_image(
@@ -156,9 +156,12 @@ def compute_benchmark(
             plot_image(image_copy, result_copy, stats)
 
         if save:
-            write_image(result, save_path + image_path.split("/")[-1])
-
-    print(f"Average SSIM: {np.mean(ssims):.4f}")
-    print(f"Average MS-SSIM: {np.mean(ms_ssims):.4f}")
-    print(f"Average PSNR: {np.mean(psnrs):.4f}")
-    print(f"Average bpp: {np.mean(rates):.4f}")
+            write_image(tf.saturate_cast(tf.round(result_copy * 255), tf.uint8), f'results/{save_path}/{image_path.split("/")[-1]}')
+    
+    if plot:
+        print(f"Average SSIM: {np.mean(ssims):.4f}")
+        print(f"Average MS-SSIM: {np.mean(ms_ssims):.4f}")
+        print(f"Average PSNR: {np.mean(psnrs):.4f}")
+        print(f"Average bpp: {np.mean(rates):.4f}")
+    
+    return np.mean(ssims), np.mean(ms_ssims), np.mean(psnrs), np.mean(rates)
