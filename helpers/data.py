@@ -38,17 +38,79 @@ def crop_image(image, patchsize):
     image = tf.image.random_crop(image, (patchsize, patchsize, 3))
     return tf.cast(image, tf.keras.mixed_precision.global_policy().compute_dtype)
 
+def augment(image):
+    # Random brightness.
+    image = tf.image.random_brightness(
+      image, max_delta=0.2)
+    image = tf.image.random_contrast(image, 0, 0.5)
+    image = tf.image.random_flip_left_right(image)
+    image = tf.image.random_flip_up_down(image)
+    image = tf.clip_by_value(image, 0, 255.)
+    return image
+
+rng = tf.random.Generator.from_seed(5438, alg='philox')
+
+# Create a wrapper function for updating seeds.
+def f(x):
+    image = augment(x)
+    return image
+
+
+def get_concatenated(name, split, args):
+    datasets = []
+    with tf.device("/cpu:0"):
+        datasets = [tfds.load(name[i], split=split, shuffle_files=True) for i in range(len(name))]
+        
+        for i in range(len(datasets)):
+            datasets[i] = datasets[i].map(lambda x: x[args["field"][i]])
+        
+        combined = datasets[0]
+        for dataset in datasets[1:]:
+            combined = combined.concatenate(dataset)
+            
+        del datasets
+        dataset = combined
+        
+        if split.startswith("train"):
+            dataset = dataset.repeat()
+            
+        dataset = dataset.filter(
+            lambda x: check_image_size(x, args["patch_size"])
+        )
+        
+        dataset = dataset.map(
+            lambda x: crop_image(x, args["patch_size"])
+        )
+        
+        # if split.startswith("train"):
+        #     dataset = dataset.batch(args["batch_size"]).map(f, num_parallel_calls=tf.data.AUTOTUNE)
+        # else:
+        dataset = dataset.batch(args["batch_size"])
+                             
+    return dataset
+
 
 def get_dataset(name, split, args):
     """Creates input data pipeline from a TF Datasets dataset."""
+    if type(name) is tuple:
+        return get_concatenated(name, split, args)
+    
     with tf.device("/cpu:0"):
         dataset = tfds.load(name, split=split, shuffle_files=True)
         if split.startswith("train"):
             dataset = dataset.repeat()
+            
         dataset = dataset.filter(
             lambda x: check_image_size(x[args["field"]], args["patch_size"])
         )
+        
         dataset = dataset.map(
             lambda x: crop_image(x[args["field"]], args["patch_size"])
         )
+        
+        # if split.startswith("train"):
+        #     dataset = dataset.batch(args["batch_size"]).map(f, num_parallel_calls=tf.data.AUTOTUNE)
+        # else:
+        dataset = dataset.batch(args["batch_size"])
+                             
     return dataset
