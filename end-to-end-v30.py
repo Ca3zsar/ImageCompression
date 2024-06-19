@@ -32,19 +32,21 @@ tf.autograph.set_verbosity(
 
 tf.compat.v1.logging.set_verbosity(tf.compat.v1.logging.ERROR)
 
+# tf.config.optimizer.set_jit(True)
 
 args = {
     "patch_size" : 256,
     "batch_size" : 8,
     "num_filters" : 512,
-    "latent_dims" : 64,
-    "lambda_value" : 0.1,
-    "num_epochs" : 30,
+    "latent_dims" : 128,
+    "lambda_value" : 0.5,
+    "num_epochs" : 50,
     "steps_per_epoch" : 1000,
     "checkpoint_dir" : "models/checkpoints/",
     "model_dir" : "models/",
-    "model_name" : "end_to_end_v13",
-    "field" : "image"
+    "model_name" : "end_to_end_v30",
+    "field" : ("image", "hr"),
+    "dataset" : ("clic", "div2k")
 }
 
 
@@ -134,17 +136,18 @@ class EndToEndModel(tf.keras.Model):
         distortion = tf.compat.v1.losses.absolute_difference(x,
                                               x_tilde,
                                               reduction=tf.compat.v1.losses.Reduction.MEAN)
-        # distortion = 1 - tf.image.ssim(x, x_tilde, max_val=255)
+        ssim_loss = (1 - tf.image.ssim(x, x_tilde, max_val=255)) + 1e-8
+        distortion = distortion * ssim_loss
         distortion = tf.cast(distortion, tf.float32)
 
         # Compute the rate-distortion loss
         loss = bpp + self.lmbda * distortion
 
-        return loss, bpp, distortion
+        return loss, bpp, ssim_loss, distortion
     
     def train_step(self, x):
         with tf.GradientTape() as tape:
-            loss, bpp, distortion = self(x, training=True)
+            loss, bpp, dissimilarity, distortion = self(x, training=True)
 
         variables = self.trainable_variables
         gradients = tape.gradient(loss, variables)
@@ -152,17 +155,19 @@ class EndToEndModel(tf.keras.Model):
 
         self.loss.update_state(loss)
         self.bpp.update_state(bpp)
+        self.dissimilarity.update_state(dissimilarity)
         self.distortion.update_state(distortion)
 
-        return {m.name: m.result() for m in [self.loss, self.bpp, self.distortion]}
+        return {m.name: m.result() for m in [self.loss, self.bpp, self.dissimilarity, self.distortion]}
     
     def test_step(self, x):
-        loss, bpp, distortion = self(x, training=False)
+        loss, bpp, dissimilarity, distortion = self(x, training=False)
         self.loss.update_state(loss)
         self.bpp.update_state(bpp)
+        self.dissimilarity.update_state(dissimilarity)
         self.distortion.update_state(distortion)
 
-        return {m.name: m.result() for m in [self.loss, self.bpp, self.distortion]}
+        return {m.name: m.result() for m in [self.loss, self.bpp, self.dissimilarity, self.distortion]}
     
     def compile(self, **kwargs):
         super().compile(
@@ -175,6 +180,7 @@ class EndToEndModel(tf.keras.Model):
 
         self.loss = tf.keras.metrics.Mean(name="loss")
         self.bpp = tf.keras.metrics.Mean(name="bpp")
+        self.dissimilarity = tf.keras.metrics.Mean(name="dissimilarity")
         self.distortion = tf.keras.metrics.Mean(name="distortion")
 
     def fit(self, *args, **kwargs):
@@ -219,7 +225,7 @@ def train(model=None):
         patience=5,
         verbose=1,
         mode="min",
-        min_delta=0.01,
+        min_delta=0.005,
         min_lr=1e-8,
     )
 
@@ -229,14 +235,14 @@ def train(model=None):
                 )
 
     model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4, clipnorm=0.5)
+        optimizer=tf.keras.optimizers.Adam(learning_rate=1e-3, clipnorm=0.5)
     )
 
-    train_dataset = get_dataset("clic", "train", args)
-    validation_dataset = get_dataset("clic", "validation", args)
+    train_dataset = get_dataset(args["dataset"], "train", args)
+    validation_dataset = get_dataset(args["dataset"], "validation", args)
 
-    train_dataset = train_dataset.batch(args["batch_size"]).prefetch(8)
-    validation_dataset = validation_dataset.batch(args["batch_size"]).cache()
+    train_dataset = train_dataset.prefetch(tf.data.AUTOTUNE)
+    validation_dataset = validation_dataset.prefetch(tf.data.AUTOTUNE).cache()
     model.fit(
         train_dataset, 
         epochs=args["num_epochs"],
@@ -248,7 +254,7 @@ def train(model=None):
             tf.keras.callbacks.TensorBoard(
                 log_dir=f'{args["model_dir"]}/{args["model_name"]}/logs', histogram_freq=1, update_freq="epoch"
             ),
-            tf.keras.callbacks.BackupAndRestore(f'{args["model_dir"]}/{args["model_name"]}'),
+            tf.keras.callbacks.BackupAndRestore(f'{args["model_dir"]}/{args["model_name"]}', delete_checkpoint=False),
             tf.keras.callbacks.ModelCheckpoint(
                 filepath=args["checkpoint_dir"] + args["model_name"] + ".h5",
                 save_best_only=True,
@@ -256,7 +262,7 @@ def train(model=None):
                 monitor="val_loss",
                 mode="min",
                 verbose=1,
-                # initial_value_threshold=6.5
+                # initial_value_threshold=0.2104
             ),
             reduceLRonPlateau,
         ],
