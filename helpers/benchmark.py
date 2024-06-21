@@ -166,4 +166,16 @@ def compute_benchmark(
         print(f"Average PSNR: {np.mean(psnrs):.4f}")
         print(f"Average bpp: {np.mean(rates):.4f}")
     
+    if save:
+        # save the results to a file in the results folder in a json file
+        with open(f"results/{save_path}/{data_directory}/results.json", "w") as file:
+            results = {
+                "ssim": np.mean(ssims),
+                "ms_ssim": np.mean(ms_ssims),
+                "psnr": np.mean(psnrs),
+                "bpp": np.mean(rates),
+            }
+            import json
+            json.dump(results, file)
+    
     return np.mean(ssims), np.mean(ms_ssims), np.mean(psnrs), np.mean(rates)
